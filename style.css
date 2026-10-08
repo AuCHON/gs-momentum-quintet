@@ -1,0 +1,529 @@
+/* 动量五重奏 —— 界面样式（深色实验室主题） */
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: #05070f;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  color: #dfe6ff;
+  user-select: none;
+}
+
+/* 画布光标用最保守的 default 箭头：grab/grabbing 手型系统光标在 Windows 显示缩放 +
+   Chromium 合成层（canvas）组合下有已报告的不渲染问题（用户实测指针消失、无法定位球拖拽）。
+   拖拽可抓的引导由瞄准仪表与提示条承担 */
+#game { position: fixed; inset: 0; display: block; touch-action: none; cursor: default; }
+
+/* ---------------- HUD ---------------- */
+#hud {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 78px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px 0;
+  background: linear-gradient(rgba(5,8,18,0.9), rgba(5,8,18,0.55) 70%, rgba(5,8,18,0));
+  opacity: 0; pointer-events: none; transition: opacity 0.3s;
+  z-index: 10;
+}
+#hud.show { opacity: 1; pointer-events: auto; }
+.hud-left, .hud-right { display: flex; align-items: center; gap: 12px; }
+/* 得分/目标/弹丸三卡：左右两组等分剩余空间（flex:1），数据卡恒真居中且为流式项——
+   与左右组在构造上不可能重叠（得分位数增长时关卡名自然 ellipsis 退让，无需宽度魔法常数） */
+.hud-left, .hud-right { flex: 1 1 0; min-width: 0; }
+.hud-left { justify-content: flex-start; }
+.hud-right { justify-content: flex-end; }
+.hud-mid {
+  display: flex; align-items: center; gap: 12px; flex: none;
+}
+.hud-left .brand {
+  line-height: 1;
+  padding-right: 14px;
+  border-right: 1px solid rgba(140,165,255,0.28);
+}
+#hud-level {
+  line-height: 1; font-weight: 700; letter-spacing: 1px; color: #9fb4ff; font-size: 16px;
+  flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; /* 左半区不足时省略号退让（数据卡随得分变宽亦安全） */
+}
+/* 顶部数据卡片：大数字一眼可读 */
+.stat {
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 8px 18px;
+  background: rgba(10,16,36,0.78);
+  border: 1px solid rgba(140,165,255,0.28);
+  border-radius: 12px;
+  font-size: 15px; color: #8fa3d9; letter-spacing: 1px;
+  transition: border-color 0.2s;
+}
+.stat b {
+  color: #ffd75e; font-size: 28px; font-weight: 800;
+  line-height: 1; font-variant-numeric: tabular-nums;
+}
+.stat b.green { color: #8ef2c0; }
+/* 弹丸告急 */
+.stat.low { border-color: rgba(255,141,141,0.55); }
+.stat.low b { color: #ff8d8d; animation: pulse 0.9s infinite alternate; }
+.chip {
+  border: 1px solid rgba(140,165,255,0.35);
+  background: rgba(20,28,58,0.8);
+  color: #cdd9ff;
+  padding: 6px 12px; border-radius: 999px;
+  font-size: 13px; cursor: pointer;
+  transition: all 0.15s;
+}
+.chip:hover { background: rgba(50,66,130,0.8); border-color: rgba(180,200,255,0.7); }
+.chip.gold { border-color: rgba(255,215,94,0.6); color: #ffd75e; }
+/* 顶部「← 选关」醒目主按钮 */
+.chip.back {
+  padding: 9px 20px; font-size: 15px; font-weight: 700;
+  background: linear-gradient(135deg, rgba(53,86,200,0.6), rgba(42,127,212,0.6));
+  border-color: rgba(150,190,255,0.75);
+  box-shadow: 0 2px 14px rgba(53,98,220,0.45);
+}
+.chip.back:hover {
+  background: linear-gradient(135deg, rgba(63,100,230,0.8), rgba(52,147,232,0.8));
+  border-color: rgba(190,215,255,0.95);
+}
+/* 品牌名（贯穿所有页面） */
+.brand {
+  font-weight: 800; letter-spacing: 5px; text-indent: 5px; white-space: nowrap;
+  background: linear-gradient(180deg, #ffffff, #9fb4ff);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  font-size: 15px;
+}
+.brand.page { font-size: clamp(22px, 3.4vh, 26px); letter-spacing: 10px; text-indent: 10px; margin-bottom: 2px; }
+.r-brand {
+  font-size: 11.5px; letter-spacing: 4px; color: #7d92d6;
+  padding-bottom: 10px; margin-bottom: 12px;
+  border-bottom: 1px solid rgba(140,165,255,0.2);
+}
+
+/* ---------------- 瞄准仪表（跟随摆台，位于右下） ---------------- */
+#meter {
+  position: fixed; right: 24px; bottom: 28px;
+  width: 240px; padding: 12px 14px;
+  background: rgba(10,15,34,0.82);
+  border: 1px solid rgba(120,150,255,0.25);
+  border-radius: 12px;
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  z-index: 9;
+}
+#meter.show { opacity: 1; }
+.meter-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.meter-label { width: 52px; font-size: 12px; color: #9fb4ff; }
+.meter-val { width: 90px; font-size: 11px; color: #8ab4ff; text-align: right; }
+.bar {
+  flex: 1; height: 10px; border-radius: 5px;
+  background: rgba(255,255,255,0.08); overflow: hidden;
+}
+#tension-bar {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, #5d7bd6, #e05656);
+  transition: width 0.05s linear;
+}
+#tension-bar.ok { background: linear-gradient(90deg, #5d7bd6, #63e6a0); }
+#speed-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #3f8fd6, #7fe0ff); transition: width 0.05s linear; }
+#tension-tip { margin-top: 6px; font-size: 12px; color: #ff8d8d; }
+#tension-tip.ok { color: #8ef2c0; }
+
+/* ---------------- 提示条 ---------------- */
+#hint {
+  position: fixed; left: 50%; bottom: 26px;
+  transform: translateX(-50%) translateY(20px);
+  max-width: min(82%, calc(100vw - 560px)); /* 居中元素须两侧对称避让：右缘 ≤ 50vw+(vw-560)/2 = vw-280 < 仪表左缘 vw-264 */
+  padding: 10px 22px;
+  background: rgba(12,18,40,0.9);
+  border: 1px solid rgba(255,215,94,0.4);
+  border-radius: 999px;
+  font-size: 14px; color: #ffe9a8;
+  opacity: 0; pointer-events: none;
+  transition: all 0.35s;
+  z-index: 25; text-align: center; /* 高于全屏页面(z-20)，自动结算提示在选关屏也可见 */
+}
+#hint.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+/* 玩法面板打开时提示条让位（面板与提示同为引导信息，避免 ≤1015px 同显互相遮挡）；
+   不支持 :has 的旧浏览器退化为原重叠表现（记录在案） */
+body:has(#panel-play.show) #hint { display: none; }
+
+/* ---------------- 全屏页面 ---------------- */
+.screen {
+  position: fixed; inset: 0;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(5,8,18,0.92);
+  z-index: 20;
+  overflow-y: auto;
+}
+.title-wrap, .select-wrap { margin: auto; }
+.screen.show { display: flex; }
+
+.title-box { text-align: center; animation: rise 0.6s ease-out; }
+@keyframes rise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+
+h1 {
+  font-size: clamp(44px, 8vw, 84px);
+  letter-spacing: 14px; text-indent: 14px;
+  background: linear-gradient(180deg, #fff, #9fb4ff 70%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: 0 0 40px rgba(120,160,255,0.35);
+}
+.sub { margin-top: 6px; color: #7d92d6; letter-spacing: 4px; font-size: 14px; }
+.desc {
+  margin: 26px auto 8px; max-width: 34em; text-wrap: balance;
+  line-height: 1.9; color: #b9c6ef; font-size: 16px;
+}
+.title-btns { margin-top: 30px; display: flex; gap: 16px; justify-content: center; }
+.foot { margin-top: 34px; font-size: 12px; color: #5a6798; letter-spacing: 3px; }
+.start-note { margin-top: 14px; font-size: 12.5px; color: #6b7ab0; }
+
+/* ---------------- 标题屏：左标题 + 右侧玩法/计分面板 ---------------- */
+.title-wrap {
+  display: flex; align-items: flex-start; justify-content: center;
+  gap: 56px; padding: 20px; max-width: 100vw;
+}
+.title-panel {
+  width: 400px; max-height: 88vh; overflow: auto;
+  padding: 18px 24px; text-align: left;
+  background: linear-gradient(160deg, rgba(20,28,62,0.92), rgba(13,19,48,0.92));
+  border: 1px solid rgba(140,165,255,0.3);
+  border-radius: 20px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.45);
+  animation: rise 0.6s 0.15s ease-out backwards;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(140,165,255,0.4) transparent;
+}
+.title-panel h3 {
+  font-size: 14px; letter-spacing: 4px; color: #9fb4ff;
+  margin: 0 0 8px; padding-bottom: 6px;
+  border-bottom: 1px solid rgba(140,165,255,0.18);
+}
+.title-panel h3:not(:first-child) { margin-top: 18px; }
+
+.step-list { list-style: none; counter-reset: step; }
+.step-list li {
+  position: relative; padding-left: 30px; margin: 8px 0;
+  font-size: 13.5px; line-height: 1.65; color: #b9c6ef;
+}
+.step-list li::before {
+  counter-increment: step; content: counter(step);
+  position: absolute; left: 0; top: 2px;
+  width: 21px; height: 21px; border-radius: 50%;
+  background: linear-gradient(135deg, #3556c8, #2a7fd4);
+  color: #fff; font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.step-list b { color: #ffe9a8; }
+
+/* 计分列表：单栏"一行一个说明"（对抗裁决 R3：≥1280 视口全部单行）——图标+名称居左、数值右对齐 */
+.score-list { list-style: none; }
+.score-list li {
+  display: flex; align-items: center; gap: 10px;
+  margin: 7px 0; font-size: 13.5px; color: #b9c6ef;
+}
+.score-list em { font-style: normal; color: #ffd75e; font-weight: 700; margin-left: auto; }
+/* 分值颜色图例：大钟青铜 / 中钟蓝钢 / 小钟紫晶 / 星星金 / 连击橙 / 无尽绿 */
+.score-list li.t-big em { color: #e0a35c; }
+.score-list li.t-mid em { color: #7fb4ff; }
+.score-list li.t-small em { color: #c792ff; }
+.score-list li.t-star em { color: #ffd75e; }
+.score-list li.t-combo em { color: #ff9d5c; }
+.score-list li.t-round em { color: #8ef2c0; }
+.bell-ico {
+  flex: none; border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+.bell-ico.ico-big { width: 22px; height: 22px; background: linear-gradient(135deg, #ffe9a8, #d9a520 60%, #8a6410); }
+.bell-ico.ico-mid { width: 17px; height: 17px; background: linear-gradient(135deg, #e6efff, #7fa8e8 60%, #3a5aa8); }
+.bell-ico.ico-small { width: 12px; height: 12px; background: linear-gradient(135deg, #f4e8ff, #c792ea 60%, #7a3fb8); }
+.star-ico { flex: none; width: 22px; text-align: center; color: #ffd75e; font-size: 17px; text-shadow: 0 0 8px rgba(255,215,94,0.6); }
+.combo-ico, .round-ico {
+  flex: none; width: 22px; height: 22px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800;
+}
+.combo-ico { color: #ff9d5c; border: 1px solid rgba(255,157,92,0.5); }
+.round-ico { color: #8ef2c0; border: 1px solid rgba(142,242,192,0.5); }
+.keys { font-size: 12.5px; color: #7d92d6; line-height: 1.75; margin-top: 4px; }
+/* 结束与结算规则列表：单栏，一行一条 */
+.rule-list { list-style: none; }
+.rule-list li {
+  position: relative; padding-left: 16px; margin: 7px 0;
+  font-size: 13px; line-height: 1.65; color: #b9c6ef;
+}
+.rule-list li::before { content: "◈"; position: absolute; left: 0; color: #5d7bd6; }
+.rule-list b { color: #ffe9a8; }
+.keys kbd {
+  padding: 1px 7px; border-radius: 5px; font-family: inherit;
+  background: rgba(140,165,255,0.12);
+  border: 1px solid rgba(140,165,255,0.35);
+  border-bottom-width: 2px; color: #cdd9ff; font-size: 11.5px;
+}
+
+.big {
+  padding: 14px 34px; font-size: 17px; letter-spacing: 2px;
+  border-radius: 14px; cursor: pointer;
+  border: 1px solid rgba(140,165,255,0.4);
+  background: rgba(22,30,62,0.9); color: #dfe6ff;
+  transition: all 0.15s;
+}
+.big:hover { transform: translateY(-2px); background: rgba(44,58,116,0.95); }
+.big.primary {
+  background: linear-gradient(135deg, #3556c8, #2a7fd4);
+  border-color: rgba(150,190,255,0.6);
+  box-shadow: 0 6px 24px rgba(53,98,220,0.4);
+}
+
+/* 标题上的小牛顿摆动画 */
+/* 标题上的小牛顿摆：每列 = 线在上球在下，金球(5号)在左，与游戏内布局一致 */
+.logo-pendulum {
+  position: relative;
+  display: inline-flex; gap: 14px;
+  margin-bottom: 26px; padding-top: 12px;
+  height: 84px;
+}
+.logo-pendulum::before { /* 顶梁 */
+  content: ''; position: absolute; top: 2px; left: -14px; right: -14px;
+  height: 6px; border-radius: 3px;
+  background: linear-gradient(180deg, #59648f, #2c3352);
+}
+.p-unit {
+  display: flex; flex-direction: column; align-items: center;
+  transform-origin: top center;
+}
+.p-strand { width: 2px; height: 40px; background: rgba(190,205,240,0.6); }
+.p-ball {
+  width: 22px; height: 22px; border-radius: 50%; margin-top: -1px;
+  background: radial-gradient(circle at 32% 30%, #e6efff, #6f9ce8 50%, #2b4fa8);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5), 0 0 10px rgba(100,150,255,0.35);
+}
+.p-ball.b5 {
+  background: radial-gradient(circle at 32% 30%, #fff6d8, #ffc94d 50%, #c67f00);
+  box-shadow: 0 0 14px rgba(255,200,90,0.9);
+}
+/* 经典牛顿摆动效：左端金球荡出 → 动量传递 → 右端蓝球荡出，循环 */
+.p-unit.p5 { animation: swingL 2.6s ease-in-out infinite; }
+.p-unit:last-child { animation: swingR 2.6s ease-in-out 1.3s infinite; }
+@keyframes swingL {
+  0% { transform: rotate(0); }
+  8% { transform: rotate(-26deg); }
+  17% { transform: rotate(0); }
+  100% { transform: rotate(0); }
+}
+@keyframes swingR {
+  0% { transform: rotate(0); }
+  8% { transform: rotate(26deg); }
+  17% { transform: rotate(0); }
+  100% { transform: rotate(0); }
+}
+
+/* ---------------- 选关（高窗 4×3+1 / 矮窗 6×2 分档；网格顶与面板顶像素对齐） ---------------- */
+.select-wrap {
+  display: flex; flex-direction: column; gap: clamp(8px, 1.6vh, 16px);
+  padding: clamp(12px, 2vh, 20px) clamp(16px, 2.5vw, 32px);
+  width: 100%; max-width: 2200px; margin: auto; /* 超宽屏组合居中（网格+面板），避免中央孔洞式空带 */
+}
+.select-head { text-align: center; flex: none; }
+.select-head h2 { letter-spacing: 8px; color: #9fb4ff; margin-bottom: clamp(6px, 1.4vh, 18px); }
+.select-body {
+  display: flex; align-items: flex-start; justify-content: center;
+  gap: clamp(24px, 4vw, 64px);
+}
+.select-box { text-align: center; animation: rise 0.4s ease-out; flex: 1 1 auto; min-width: 0; }
+#panel-select { flex: 0 0 clamp(345px, 26vw, 480px); align-self: stretch; max-height: calc(100vh - 150px); /* 地板 345：覆盖单行文本宽阈值 337（SimSun 回退 ~341），强制区卡宽仍有 ~131px */ }
+#level-grid {
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: clamp(10px, 1.2vw, 16px); max-width: 1560px; margin: 0 auto;
+}
+/* 高窗（innerHeight ≥900，如 1080p 全屏/最大化）且侧栏模式（>1150 宽）：4 列×3 行 + 无尽通栏；
+   网格宽度随视口高收敛：总高 ≈ 1.68×卡宽 + 633（窄卡下关卡名/标签换行，单卡开销实测 ~135px）≤ vh。
+   须限定侧栏模式——否则 vh 驱动的 max-width 会泄漏进 721~1150 堆叠档，无谓压窄本可滚动的布局 */
+@media (min-height: 900px) and (min-width: 1151px) {
+  #level-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    max-width: min(1200px, calc((100vh - 653px) * 2.38 + 36px));
+  }
+}
+/* 堆叠档（≤1150 纵向堆叠）用 4 列：弱化 720/721 断点处 2列↔6列 的卡片宽度 3 倍跳变 */
+@media (min-width: 721px) and (max-width: 1150px) {
+  #level-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.level-card {
+  display: flex; flex-direction: column; gap: clamp(5px, 1vh, 8px); align-items: stretch;
+  padding: clamp(8px, 1.4vh, 12px);
+  border-radius: 16px; cursor: pointer;
+  border: 1px solid rgba(120,150,255,0.3);
+  border-top: 3px solid var(--c, rgba(120,150,255,0.5));
+  background: rgba(18,26,54,0.85);
+  color: #dfe6ff; transition: all 0.15s;
+}
+.level-card:hover {
+  transform: translateY(-3px); border-color: rgba(180,200,255,0.7);
+  background: rgba(34,48,98,0.9);
+  box-shadow: 0 8px 22px rgba(0,0,0,0.4);
+}
+.level-card.endless { grid-column: 1 / -1; background: rgba(20,40,44,0.85); border-color: rgba(120,230,190,0.35); }
+.level-card.locked { opacity: 0.45; filter: grayscale(0.6); cursor: not-allowed; }
+.level-card.locked:hover { transform: none; border-color: rgba(120,150,255,0.3); background: rgba(18,26,54,0.85); box-shadow: none; }
+.level-card.locked .lv-map { filter: grayscale(0.8) brightness(0.7); }
+.lv-top { display: flex; align-items: center; gap: 10px; }
+.lv-num {
+  flex: none; width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--c, #5d7bd6); color: #0b1020;
+  font-weight: 800; font-size: 16px;
+}
+.lv-name { font-size: 15px; font-weight: 700; text-align: left; flex: 1; }
+.lv-tag {
+  align-self: flex-start; font-size: 11px; letter-spacing: 1px;
+  color: var(--c); border: 1px solid var(--c);
+  padding: 1px 9px; border-radius: 999px; opacity: 0.9;
+}
+.lv-map { width: 100%; height: auto; border-radius: 10px; border: 1px solid rgba(140,165,255,0.15); } /* 高度随宽度按画布固有比例(150:84)缩放 */
+.lv-foot { min-height: 18px; text-align: center; }
+.lv-badge { font-size: 12px; color: #8ef2c0; }
+.lv-badge.fail { color: #ff8d8d; }
+.lv-stars { font-size: 13px; color: #ffd75e; }
+.lv-stars .dim { color: rgba(255,255,255,0.18); }
+/* 选关页「返回主页」：左上角固定，与游戏内返回键同位同款 */
+.back-title {
+  position: fixed; top: 20px; left: 24px;
+  z-index: 21; margin-top: 0;
+}
+
+/* ---------------- 浮层 ---------------- */
+.overlay {
+  position: fixed; inset: 0;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(4,6,14,0.72);
+  backdrop-filter: blur(4px);
+  z-index: 30;
+}
+.overlay.show { display: flex; }
+.dialog {
+  min-width: min(480px, 92vw); max-width: 92vw; max-height: 86vh; overflow: auto;
+  padding: 34px 38px;
+  background: linear-gradient(160deg, #141c3e, #0d1330);
+  border: 1px solid rgba(140,165,255,0.35);
+  border-radius: 20px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  animation: rise 0.3s ease-out;
+}
+.r-title { font-size: 34px; letter-spacing: 6px; margin-bottom: 12px; }
+.r-title.win { color: #8ef2c0; text-shadow: 0 0 24px rgba(120,240,180,0.4); }
+.r-title.fail { color: #ff8d8d; }
+.r-stars { font-size: 44px; margin: 8px 0 14px; letter-spacing: 10px; }
+.r-stars .lit { color: #ffd75e; text-shadow: 0 0 20px rgba(255,215,94,0.6); }
+.r-stars .dim, .dim { color: rgba(255,255,255,0.18); }
+.r-score { color: #b9c6ef; margin-bottom: 8px; }
+.r-score b { color: #ffd75e; font-size: 26px; }
+.r-total { margin-top: 2px; }
+.r-total b { color: #8ef2c0; }
+
+/* 结算：关卡得分/耗时报表明细（固定高度内滚动） */
+.r-detail { margin-top: 14px; text-align: left; }
+.r-detail-title { font-size: 12.5px; color: #9fb4ff; letter-spacing: 3px; margin-bottom: 6px; }
+.r-detail-head, .r-row {
+  display: grid; grid-template-columns: 1fr 72px 60px; gap: 8px;
+  padding: 5px 12px; font-size: 13px; align-items: center;
+}
+.r-detail-head {
+  color: #7d92d6; font-size: 11.5px;
+  border-bottom: 1px solid rgba(140,165,255,0.25);
+}
+.r-detail-list {
+  max-height: 172px; overflow-y: auto;
+  border: 1px solid rgba(140,165,255,0.18);
+  border-radius: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(140,165,255,0.4) transparent;
+}
+.r-detail-list::-webkit-scrollbar { width: 6px; }
+.r-detail-list::-webkit-scrollbar-thumb { background: rgba(140,165,255,0.35); border-radius: 3px; }
+.r-row {
+  color: #b9c6ef;
+  border-bottom: 1px dashed rgba(140,165,255,0.12);
+}
+.r-row:last-child { border-bottom: none; }
+.r-row .c2 { text-align: right; color: #ffd75e; font-weight: 700; }
+.r-row .c3 { text-align: right; color: #8ab4ff; font-variant-numeric: tabular-nums; }
+.r-row.cur { background: rgba(53,98,220,0.16); box-shadow: inset 3px 0 0 #5d7bd6; }
+.r-score small { color: #5a6798; }
+.r-new { color: #8ef2c0; font-weight: 800; letter-spacing: 4px; margin: 10px 0; animation: pulse 1s infinite alternate; }
+@keyframes pulse { from { transform: scale(1); } to { transform: scale(1.12); } }
+.r-btns { margin-top: 22px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.r-btns button {
+  padding: 10px 22px; border-radius: 10px; cursor: pointer;
+  border: 1px solid rgba(140,165,255,0.4);
+  background: rgba(26,36,74,0.9); color: #dfe6ff; font-size: 15px;
+}
+.r-btns button:hover { background: rgba(46,62,124,0.95); }
+.r-btns button.primary { background: linear-gradient(135deg, #3556c8, #2a7fd4); }
+
+/* ---------------- 帮助 ---------------- */
+.dialog.help { text-align: left; }
+.dialog.help h2 { margin: 6px 0 12px; color: #9fb4ff; letter-spacing: 3px; font-size: 19px; }
+.dialog.help h2:first-of-type { margin-top: 0; }
+.dialog.help ul { list-style: none; margin-bottom: 18px; }
+.dialog.help li {
+  padding: 7px 0 7px 18px; position: relative;
+  color: #b9c6ef; line-height: 1.75; font-size: 14px;
+}
+.dialog.help li::before { content: "◈"; position: absolute; left: 0; color: #5d7bd6; }
+.dialog.help b { color: #ffe9a8; }
+.dialog.help .big { display: block; margin: 8px auto 0; }
+
+@media (max-width: 1015px) {
+  /* 窄窗口：提示条抬到瞄准仪表上方（仪表顶≈vh−120；面板同显时由 body:has 规则隐藏提示条） */
+  #hint { bottom: 190px; max-width: 86%; }
+}
+@media (max-width: 1120px) {
+  /* HUD 紧凑档（≤1120）：改两行流式——首行 返回+关卡名 | 按钮组，次行数据卡居中；高度自适应。
+     左右组须还原 auto 基准（basis 0 会使 0+0+100% 恰不溢出 → 不换行 → 左右组被压为 0 宽） */
+  #hud { flex-wrap: wrap; height: auto; min-height: 62px; padding: 8px 12px 6px; row-gap: 6px; }
+  .hud-left .brand { display: none; }
+  .hud-left, .hud-right { gap: 8px; flex: 0 1 auto; }
+  .hud-mid { gap: 6px; order: 3; flex-basis: 100%; justify-content: center; }
+  .stat { padding: 5px 10px; font-size: 12px; gap: 6px; }
+  .stat b { font-size: 20px; }
+  #hud-level { font-size: 13px; }
+}
+@media (max-width: 720px) {
+  #level-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .back-title { top: 12px; left: 12px; padding: 7px 14px; font-size: 13px; }
+  #meter { right: 12px; bottom: 20px; top: auto; left: auto; width: 190px; }
+  .meter-val { display: none; }
+}
+@media (max-width: 480px) {
+  /* 窄手机：隐藏选关页品牌页题，避免与左上「返回主页」按钮视觉相撞（h2 仍在） */
+  .select-head .brand.page { display: none; }
+}
+@media (max-width: 420px) {
+  /* 超窄带：居中标题与返回键字形级相撞（≤415px 必撞）——改为在返回键右侧的
+     剩余空间内居中（按钮右缘实测 ~133px + 3px 间隙） */
+  .select-head { padding-left: 136px; }
+  .select-head h2 { letter-spacing: 1px; }
+}
+
+/* 游戏内玩法面板：右侧悬浮，可随时开关；高度上限避开右下瞄准仪表（同显不遮挡） */
+#panel-play {
+  position: fixed; right: 16px; top: 92px;
+  width: 350px; max-height: min(76vh, calc(100vh - 272px));
+  z-index: 15; display: none; animation: none;
+}
+#panel-play.show { display: block; animation: rise 0.25s ease-out; }
+/* 面板顶部让位分档 HUD——必须置于上方基础规则之后（同特异性 #panel-play，源序后者胜；
+   R4 教训：先前分档写在更早的媒体块里被基础规则的 top:92px 级联覆盖，从未生效） */
+@media (max-width: 1120px) { #panel-play { top: 100px; } } /* 让位两行 HUD（实测整高 93px） */
+@media (max-width: 720px) { #panel-play { top: 140px; } }  /* 让位三行 HUD（390 实测整高 132px，数据卡行不再被面板盖住） */
+
+@media (max-width: 1150px) {
+  /* 窄屏：信息面板移到标题下方（选关纵向堆叠，允许屏内滚动兜底）。
+     堆叠方向下 align-items/align-self 管水平轴——基础规则的 flex-start/stretch 须恢复居中，
+     否则面板在窄屏不再水平居中（对抗复审 #1 + 盲区 7） */
+  .title-wrap { flex-direction: column; gap: 28px; align-items: center; }
+  .title-panel { width: min(460px, 92vw); }
+  .select-body { flex-direction: column; align-items: center; gap: 24px; }
+  #panel-select { flex: none; width: min(460px, 92vw); max-height: none; align-self: center; }
+  #panel-play { right: 12px; width: min(320px, 88vw); }
+  .desc { margin: 18px 0 4px; }
+  .foot { margin-top: 22px; }
+}
